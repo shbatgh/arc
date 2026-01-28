@@ -24,8 +24,8 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv sync 
-        uv sync --only-dev
+        uv sync
+
 
     - name: Build with PyInstaller
       run: |
