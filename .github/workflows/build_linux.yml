@@ -1,0 +1,42 @@
+name: Build Linux App
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        version: "latest"
+
+    - name: Set up Python
+      run: uv python install 3.13
+
+    - name: Install dependencies
+      run: |
+        # Install system dependencies for Qt/OpenCV if needed
+        sudo apt-get update
+        sudo apt-get install -y libegl1 libgl1-mesa-glx libxkbcommon-x11-0 libdbus-1-3
+        
+        uv sync
+        uv sync --only-dev
+
+    - name: Build with PyInstaller
+      run: |
+        uv run pyinstaller linux_build.spec --clean --noconfirm
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Arc-Linux
+        path: dist/Arc
