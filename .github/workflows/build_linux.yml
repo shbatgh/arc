@@ -26,8 +26,8 @@ jobs:
       run: |
         # Install system dependencies for Qt/OpenCV if needed
         sudo apt-get update
-        sudo apt-get install -y libegl1 libgl1-mesa-glx libxkbcommon-x11-0 libdbus-1-3
-        
+        sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 libdbus-1-3
+
         uv sync
         uv sync --only-dev
 
