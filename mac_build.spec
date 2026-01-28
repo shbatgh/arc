@@ -1,5 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import sys
+import os
+from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
@@ -10,10 +13,17 @@ hidden_imports = []
 hidden_imports += collect_submodules('cellpose')
 hidden_imports += collect_submodules('vedo')
 
+# Find Python shared library for macOS
+binaries = []
+if sys.platform == 'darwin':
+    python_lib = Path(sys.executable).parent.parent / 'lib' / f'libpython{sys.version_info.major}.{sys.version_info.minor}.dylib'
+    if python_lib.exists():
+        binaries.append((str(python_lib), '.'))
+
 a = Analysis(
     ['Arc/main.py'],
     pathex=[],
-    binaries=[],
+    binaries=binaries,
     datas=[('Arc/resources', 'Arc/resources')],
     hiddenimports=hidden_imports,
     hookspath=[],
