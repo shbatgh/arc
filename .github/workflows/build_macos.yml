@@ -1,0 +1,51 @@
+name: Build macOS App
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        version: "latest"
+
+    - name: Set up Python
+      run: uv python install 3.13
+
+    - name: Install dependencies
+      run: |
+        uv sync --locked
+        # Ensure PyInstaller is installed (it's in your dev dependencies)
+        uv sync --only-dev
+
+    - name: Build with PyInstaller
+      run: |
+        # Run PyInstaller using 'uv run' to ensure it uses the virtual environment
+        uv run pyinstaller mac_build.spec --clean --noconfirm
+
+    - name: Create DMG (Optional but recommended)
+      run: |
+        # Simple DMG creation using hdiutil
+        hdiutil create -volname "Arc" -srcfolder dist/Arc.app -ov -format UDZO dist/Arc.dmg
+
+    - name: Upload App Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Arc-macOS-App
+        path: dist/Arc.app
+
+    - name: Upload DMG Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Arc-macOS-DMG
+        path: dist/Arc.dmg
