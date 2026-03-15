@@ -7,11 +7,11 @@ This document is the deep technical guide for the ARC desktop GUI stack in `Arc/
 Covered:
 - app boot flow (`Arc/main.py`)
 - Qt widget topology (`Arc/app/main_window.py`)
-- VTK/vedo rendering and picking (`Arc/app/viewer_3d.py`)
+- VTK rendering and picking (`Arc/render/vtk_backend.py`)
 - timeline playback (`Arc/app/timeline.py`)
 - property sidebar behavior (`Arc/app/sidebar.py`)
-- clustering UI worker model (`Arc/app/clustering_panel.py`)
-- contracts with project/scene/cell models (`Arc/core/`)
+- clustering UI stub (`Arc/app/clustering_panel.py`)
+- data types (`Arc/core/render_types.py`)
 
 Not covered:
 - `arc-c++/` (experimental)
@@ -40,34 +40,18 @@ Entry: `Arc/main.py`
 4. Show window and enter event loop (`app.exec()`)
 
 Important details:
-- Running `src/arc/main.py` is not equivalent; it is a standalone demo viewport.
 - GUI style object names (`TimelineTimepointLabel`, `SidebarTitle`, etc.) are expected by the QSS file.
 
 ## MainWindow Composition
 
 `Arc/app/main_window.py`
 
-Main state holders:
-- `self.project: Project`
-- `self.scene: Scene` (current timepoint)
-- `self._timepoints: list[int]`
-- `self._cell_tracker: CellTracker`
-- `self._cell_tracks: dict[int, Cell4D]`
-- `self._cluster_map: dict[int, int]` (track_id -> cluster)
-- `self._cluster_colors: dict[int, tuple]`
-- `self._data_root: Path | None`
-
 Child widgets:
-- `Viewer3D` (left, expanding)
+- `Viewport` (left, expanding) — wraps `Arc/render/vtk_backend.py`
 - `QTabWidget` on right with:
   - `Sidebar` tab (`Selection`)
   - `ClusteringPanel` tab (`Clustering`)
 - `Timeline` at bottom
-
-Signal wiring:
-- `viewer.cell_picked` -> `_on_cell_picked`
-- `timeline.slider.valueChanged` -> `_show_timepoint_index`
-- `clustering_panel.clustering_complete` -> `_on_clustering_complete`
 
 ## Import Flow (End to End)
 
@@ -107,47 +91,25 @@ File menu -> Import Dataset Folder...
 Side effect expectation:
 - every timepoint switch rebuilds render actors via `display_scene()` (clear + add meshes + reset camera)
 
-## Viewer3D Internals
+## Render Backend Internals
 
-`Arc/app/viewer_3d.py`
+`Arc/render/vtk_backend.py`
 
 ### Core objects
 
-- `QVTKRenderWindowInteractor` embedded in QWidget layout
-- vedo `Plotter` bound to that VTK widget
-- `vtkCellPicker` with tolerance `0.0005`
-- actor lookup map: `_actor_to_cell_id`
+- VTK render window and renderer
+- `vtkCellPicker` for cell selection
+- actor lookup map for cell_id resolution
+- Blender-like interactor style (`Arc/render/vtk_interactor.py`)
 
 ### Picking
 
-Left-click observer runs:
-1. convert cursor to renderer pick call
-2. resolve picked actor
-3. map actor -> `cell_id` from `_actor_to_cell_id`
-4. emit Qt signal `cell_picked(cell_id)`
-
-Contract requirement:
-- every renderable mesh must have a stable `cell_id` and actor set pickable.
-
-### Keyboard camera controls
-
-Supported keys:
-- movement: `W/S`, `A/D`, `Q/E`
-- aliases: arrow keys map to forward/back/left/right movement (not yaw/pitch)
-
-Implementation computes camera basis vectors from position/focal/up and applies translations by `MOVE_SPEED=5.0`.
-
-### Wireframe mode
-
-`set_wireframe_mode(enabled)` toggles `mesh.wireframe()` for each actor that is a vedo `Mesh`.
+Left-click resolves picked actor and maps to `cell_id`.
 
 ### Rendering lifecycle
 
-- `display_scene()` calls `clear_scene()` first
-- adds each mesh through `_add_mesh()`
-- resets camera every scene switch
-
-If you need camera persistence between frames, this is the method to modify.
+- Scene display clears previous actors, adds new ones from `RenderScene`
+- Camera resets on each scene switch
 
 ## Timeline Mechanics
 
@@ -228,35 +190,17 @@ This is critical: color consistency over time depends on `track_id` consistency.
 
 ## Data Layer Contracts
 
-### `Cell` (`Arc/core/cell.py`)
+### `RenderScene` / `RenderFrame` / `RenderCellMesh` (`Arc/core/render_types.py`)
 
-- required fields: `cell_id`, `mesh`, `metadata`
-- computed properties delegated to vedo mesh:
-  - `volume`
-  - `area`
-  - `center` (center of mass)
-
-### `Scene` (`Arc/core/scene.py`)
-
-- map from `cell_id` to `Cell`
-- `meshes()` returns list used by viewer
-
-### `Project` (`Arc/core/project.py`)
-
-- map from `timepoint` to `Scene`
-
-### Tracking metadata keys (written by `CellTracker`)
-
-- `track_id`
-- `t_start`
-- `t_end`
-- `display_id`
+- `RenderScene` contains a list of `RenderFrame` (one per timepoint)
+- `RenderFrame` contains a list of `RenderCellMesh`
+- `RenderCellMesh` has `cell_id`, `geometry` (vertices/faces), `style` (color/opacity), `metadata`
 
 ## Threading and Safety Notes
 
 - UI updates happen on main Qt thread.
 - Clustering calculations run in `QThread`; worker emits plain dict payloads.
-- dataset reconstruction uses process pool in `mesh_loader` for isolation from BioVision globals.
+- dataset reconstruction uses process pool in `pipeline_runner` for isolation from BioVision globals.
 
 Never call GUI-mutating methods directly from worker threads.
 
@@ -294,14 +238,13 @@ When adding widgets:
 
 ### Preserve camera between frames
 
-Replace or gate `plotter.reset_camera()` in `Viewer3D.display_scene()`.
+Gate camera reset in `Arc/render/vtk_backend.py` scene display.
 
 ## Known Pitfalls
 
-- `display_scene()` always clears and rebuilds actors; any actor-side state is transient.
-- Arrow keys are mapped to translation, not rotation, in `Viewer3D`; this differs from demo in `src/arc/main.py`.
-- clustering relies on integer-convertible `cell_id`/`Cell ID` in analyzer output.
-- if mesh loading fails per timepoint, scene may be absent; always guard for missing keys.
+- Scene display always clears and rebuilds actors; any actor-side state is transient.
+- Clustering relies on integer-convertible `cell_id`/`Cell ID` in analyzer output.
+- If mesh loading fails per timepoint, scene may be absent; always guard for missing keys.
 
 ## Validation Checklist for GUI Changes
 
@@ -317,11 +260,14 @@ Replace or gate `plotter.reset_camera()` in `Viewer3D.display_scene()`.
 
 - `Arc/main.py`
 - `Arc/app/main_window.py`
-- `Arc/app/viewer_3d.py`
+- `Arc/app/segmentation_viewer.py`
+- `Arc/app/viewport.py`
 - `Arc/app/timeline.py`
 - `Arc/app/sidebar.py`
 - `Arc/app/clustering_panel.py`
-- `Arc/core/cell.py`
-- `Arc/core/cell4d.py`
-- `Arc/core/io/mesh_loader.py`
+- `Arc/core/render_types.py`
+- `Arc/io/raw_outline_loader.py`
+- `Arc/io/pipeline_runner.py`
+- `Arc/render/vtk_backend.py`
+- `Arc/render/vtk_interactor.py`
 

@@ -15,16 +15,9 @@ uv sync
 # Run the full desktop application
 uv run python Arc/main.py
 
-# Install dev dependencies (PyInstaller, ipykernel)
+# Install dev dependencies (ipykernel)
 uv sync --only-dev
-
-# Build distributables
-uv run pyinstaller linux_build.spec --clean --noconfirm    # Linux
-uv run pyinstaller mac_build.spec --clean --noconfirm      # macOS
-uv run pyinstaller windows_build.spec --clean --noconfirm   # Windows
 ```
-
-**Note:** The `arc` CLI script (from pyproject.toml `project.scripts`) points to `src/arc/main.py`, which is a VTK cube demo — NOT the main application. Always use `Arc/main.py` for the real app.
 
 There are no automated tests. Validation is manual (see `docs/GUI_ONBOARDING.md` for the testing checklist).
 
@@ -54,20 +47,31 @@ Mode determines reconstruction pipeline, VTK actor types, and cache file format.
 ### Key Modules
 
 **`Arc/app/`** — Qt GUI layer:
-- `main_window.py` — orchestration: import flow, tracking, clustering wiring
-- `viewer_3d.py` — VTK/vedo viewport, cell picking, camera controls
+- `main_window.py` — orchestration: import flow, segmentation, rendering wiring
+- `segmentation_viewer.py` — Cellpose segmentation preview and outline editing
+- `viewport.py` — thin wrapper embedding the VTK render backend into Qt
 - `timeline.py` — playback slider with 250ms timer loop
 - `sidebar.py` — selected-cell property table
-- `clustering_panel.py` — clustering controls + QThread worker
+- `clustering_panel.py` — clustering controls (placeholder, not yet connected)
+- `isolation_dialog.py` — cell isolation mode dialog
+- `theme.py` — application-wide palette and styling
 
-**`Arc/core/`** — data model and I/O:
-- `cell.py` — wrapper over vedo Mesh (volume, area, center)
-- `scene.py` — per-timepoint container (dict of Cell objects)
-- `project.py` — collection of Scenes keyed by timepoint
-- `cell4d.py` — cross-timepoint tracker (greedy centroid-distance, threshold=50.0)
-- `io/mesh_loader.py` — dataset parsing, reconstruction dispatch, pickle caching
+**`Arc/core/`** — data types and configuration:
+- `render_types.py` — dataclasses for RenderScene, RenderFrame, RenderCellMesh, etc.
+- `isolation_config.py` — isolation mode configuration
 
-**`BioVision/`** — geometry and analysis pipeline. ARC uses a focused subset:
+**`Arc/io/`** — dataset loading and pipeline:
+- `bundle_loader.py` — load `.arc` bundle files
+- `pipeline_runner.py` — orchestrates BioVision processing pipeline
+- `raw_outline_loader.py` — parse `_cp_outlines.txt` files into RenderScene
+- `outline_editor.py` — outline manipulation utilities
+
+**`Arc/render/`** — VTK rendering backend:
+- `vtk_backend.py` — VTK scene management, picking, camera controls
+- `vtk_interactor.py` — Blender-like mouse interaction style
+- `backend.py` — abstract render backend interface
+
+**`Perf/BioVision/`** — geometry and analysis pipeline. ARC uses a focused subset:
 - `processing/single_stack_cell_matching.py` — Z-slice cell association
 - `processing/mesh_creation/cell_point_filler.py` — spline interpolation
 - `processing/solid_mesh_from_3D_outlines.py` — convex-hull mesh generation
@@ -93,10 +97,10 @@ Experimental C++ port using CMake + vcpkg. Not part of the active development pa
 
 ## CI/CD
 
-GitHub Actions workflows in `.github/workflows/` build platform binaries on push to main/master and PRs:
+GitHub Actions workflows in `.github/workflows/` run import smoke tests on push to main/master and PRs:
 - `build_linux.yml` — Ubuntu, installs system deps (libEGL, libGL, libxkbcommon, libdbus)
-- `build_macos.yml` — creates DMG artifact
-- `build_windows.yml` — Windows binary
+- `build_macos.yml` — macOS
+- `build_windows.yml` — Windows
 
 All use Python 3.13 + uv.
 

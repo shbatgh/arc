@@ -42,35 +42,40 @@ High-level data flow:
 Arc/
   main.py                        # main app entrypoint (use this to run ARC)
   app/
-    main_window.py               # UI orchestration, import flow, tracking, clustering wiring
-    viewer_3d.py                # VTK/vedo viewport, picking, camera controls
-    timeline.py                 # playback and timepoint slider
-    sidebar.py                  # selected-cell property table
-    clustering_panel.py         # clustering controls + worker thread
+    main_window.py               # UI orchestration, import flow, rendering wiring
+    segmentation_viewer.py       # Cellpose segmentation preview + outline editing
+    viewport.py                  # Qt wrapper for VTK render backend
+    timeline.py                  # playback and timepoint slider
+    sidebar.py                   # selected-cell property table
+    clustering_panel.py          # clustering controls (placeholder)
+    isolation_dialog.py          # cell isolation mode dialog
+    theme.py                     # application-wide palette and styling
   core/
-    cell.py                     # cell wrapper over vedo mesh (volume/area/center)
-    cell4d.py                   # cross-timepoint tracker (greedy nearest-neighbor)
-    scene.py                    # per-timepoint container
-    project.py                  # collection of scenes
-    io/
-      mesh_loader.py            # dataset parsing, reconstruction, caching
+    render_types.py              # dataclasses (RenderScene, RenderFrame, RenderCellMesh, etc.)
+    isolation_config.py          # isolation mode configuration
+  io/
+    bundle_loader.py             # load .arc bundle files
+    pipeline_runner.py           # orchestrates BioVision processing pipeline
+    raw_outline_loader.py        # parse _cp_outlines.txt into RenderScene
+    outline_editor.py            # outline manipulation utilities
+  render/
+    vtk_backend.py               # VTK scene management, picking, camera
+    vtk_interactor.py            # Blender-like mouse interaction style
+    backend.py                   # abstract render backend interface
 
-BioVision/
+Perf/BioVision/
   processing/
     single_stack_cell_matching.py          # slice-to-slice cell association
-    animation_cell_matching.py             # timepoint-to-timepoint association
+    pickled_animation_cell_matching.py     # timepoint-to-timepoint association
     solid_mesh_from_3D_outlines.py         # convex-hull solid mesh generation
-    mesh_creation/                         # wireframe generation, capping, splines, mesh repair
+    mesh_creation/                         # wireframe generation, capping, splines
     segmentation/                          # Cellpose-based outline generation
     translators/                           # manual/SVG/AI data formatting utilities
     get_quant_data*.py                     # quantification and export scripts
   clustering/
-    cell_clustering.py                     # clustering engine used by ARC clustering panel
+    cell_clustering.py                     # clustering engine (KMeans, Spectral, HDBSCAN)
   visualizing/
     pickled_renderer.py                    # Blender add-on for WIREFRAME/MESH/TRACER payloads
-
-src/arc/
-  main.py                                 # VTK cube demo entrypoint used by `arc` script
 ```
 
 ## Runtime Modes
@@ -97,7 +102,7 @@ Mode affects both reconstruction pipeline and cache file used.
 uv sync
 ```
 
-Optional developer dependencies (PyInstaller):
+Optional developer dependencies (ipykernel):
 
 ```bash
 uv sync --only-dev
@@ -108,10 +113,6 @@ uv sync --only-dev
 ```bash
 uv run python Arc/main.py
 ```
-
-Important:
-- `arc` CLI script from `pyproject.toml` points to `src/arc/main.py`, which is a small 3D cube demo.
-- Use `Arc/main.py` for the production desktop application.
 
 ## Dataset Contract
 
@@ -138,77 +139,26 @@ The `.tif` files are useful upstream but not required at render time if outlines
 
 ## Import and Reconstruction Pipeline
 
-Entry point: `Arc/app/main_window.py` -> `import_dataset_folder()`
+Entry point: `Arc/app/main_window.py`
 
-### Step 1: User chooses folder and mode
+### Step 1: User chooses folder
 
-- File menu triggers folder chooser (`Arc/app/dialogs/import_dialog.py`)
-- Mode chooser sets one of `Solid`, `Mesh`, `Raw`
+- File menu triggers folder chooser
+- Raw outline mode: `Arc/io/raw_outline_loader.py` parses `_cp_outlines.txt` files directly
+- Pipeline mode: `Arc/io/pipeline_runner.py` orchestrates BioVision processing
 
-### Step 2: Loader resolves cache or computes data
+### Step 2: Raw outline loading
 
-`Arc/core/io/mesh_loader.py::load_dataset_from_root()`:
+`raw_outline_loader.load_raw_outlines()`:
 
-1. Computes cache path: `<dataset_parent>/<dataset_name>_<mode>.pkl`
-2. If cache exists:
-   - loads via `_load_wireframe_cache()` for `raw/mesh`
-   - loads via `_load_solid_cache()` for `solid`
-3. If no cache:
-   - enumerates valid timepoint folders
-   - processes each timepoint in a `ProcessPoolExecutor`
+1. Finds timepoint directories and `_cp_outlines.txt` files
+2. Parses outlines into `RenderCellMesh` objects with line-strip geometry
+3. Assembles `RenderFrame` per timepoint, returns `RenderScene`
 
-### Step 3: Per-timepoint reconstruction in worker process
+### Step 3: Scene rendering
 
-`_process_timepoint_task()`:
-
-1. `_load_stack_from_timepoint()` builds `stack_list`
-   - each slice becomes `{(255,0,0): [outline1, ...]}`
-2. resets BioVision globals (`cell_count`, `cells`) in worker
-3. calls `single_stack_cell_matching.compute_stack()`
-4. per cell, `_compute_mesh_data_from_cell()` returns:
-   - `raw`: XY curves
-   - `mesh`: XY + splined XZ/YZ curves from `cell_point_filler.point_filler()`
-   - `solid`: convex hull from `solid_mesh_from_3D_outlines.build_mesh()`
-
-### Step 4: Scene assembly
-
-- Wireframe modes: `_create_scene_from_wireframe_data()`
-  - `mesh` mode converts curves to tubes via `_create_tube_from_curves()`
-  - `raw` mode keeps line primitives
-- Solid mode: `_create_scene_from_solid_data()` from vertices/faces
-- Result is `Project.scenes[timepoint] = Scene(...)`
-
-### Step 5: Cache write
-
-- `raw`: header `RAW\n`
-- `mesh`: header `WIREFRAME\n`
-- `solid`: header `MESH\n`
-
-Caches are pickle payloads with mode-specific structure and are reused on subsequent imports.
-
-## Tracking Pipeline (Across Time)
-
-After successful import, `MainWindow._track_cells()` executes `CellTracker.track_cells()` (`Arc/core/cell4d.py`).
-
-Algorithm shape:
-
-1. Initialize one track per cell in first timepoint.
-2. For each next timepoint:
-   - gather active tracks from previous frame
-   - compute distance from each new cell center to each active track center
-   - greedy assignment by ascending distance
-   - enforce one-to-one match
-   - create new track for unmatched cells
-3. annotate each cell metadata with:
-   - `track_id`
-   - `t_start`
-   - `t_end`
-   - `display_id` (`t<start>-t<end>_<id>`) after final metadata update
-
-Current tracker characteristics:
-- purely centroid-distance based
-- threshold is fixed (`max_distance=50.0`)
-- no split/merge lineage modeling
+- `Arc/render/vtk_backend.py` converts `RenderScene` to VTK actors
+- Cell picking maps clicked actors to `cell_id` metadata
 
 ## Clustering Pipeline
 
@@ -257,7 +207,7 @@ Detailed GUI internals are documented in `docs/GUI_ONBOARDING.md`.
 
 ## BioVision Role in Current ARC
 
-ARC does not use all of BioVision. It relies on a focused subset:
+ARC does not use all of BioVision (`Perf/BioVision/`). It relies on a focused subset:
 
 - `processing/single_stack_cell_matching.py`
 - `processing/mesh_creation/cell_point_filler.py`
@@ -278,38 +228,22 @@ BioVision contains many additional scripts for manual/SVG formatting, Blender re
 
 ### Change matching behavior (tracking)
 
-1. Update logic in `Arc/core/cell4d.py`.
-2. Keep metadata contract (`track_id`, `display_id`, `t_start`, `t_end`) intact.
-3. Validate with dense datasets where cells are close.
-4. Re-check clustering, because cluster mapping depends on stable track IDs.
+1. Update logic in `Perf/BioVision/processing/single_stack_cell_matching.py` (Z-slice) or `pickled_animation_cell_matching.py` (timepoint).
+2. Validate with dense datasets where cells are close.
 
 ### Add a new import mode
 
-1. Extend mode handling in `Arc/app/main_window.py` and `Arc/core/io/mesh_loader.py`.
-2. Define cache header/schema and save/load functions.
-3. Ensure `Scene` builds pickable meshes for selection.
-4. Confirm volume/area semantics for sidebar fields.
+1. Add a new loader in `Arc/io/` following `raw_outline_loader.py` pattern.
+2. Return a `RenderScene` with appropriate `RenderCellMesh` objects.
+3. Wire it into `Arc/app/main_window.py`.
 
 ### Work with BioVision scripts
 
 Most legacy scripts are path-hardcoded and workflow-specific. Treat them as reference code unless explicitly productized.
 
-## Build and Distribution
+## CI
 
-### Local PyInstaller builds
-
-- Linux: `uv run pyinstaller linux_build.spec --clean --noconfirm`
-- macOS: `uv run pyinstaller mac_build.spec --clean --noconfirm`
-- Windows: `uv run pyinstaller windows_build.spec --clean --noconfirm`
-
-Specs package:
-- `Arc/main.py`
-- `Arc/resources`
-- hidden imports for `cellpose` and `vedo`
-
-### CI workflows
-
-GitHub workflows in `.github/workflows/` build platform artifacts:
+GitHub workflows in `.github/workflows/` run import smoke tests:
 - `build_linux.yml`
 - `build_macos.yml`
 - `build_windows.yml`
@@ -320,7 +254,6 @@ GitHub workflows in `.github/workflows/` build platform artifacts:
 - First import on large datasets is expensive; cache files are critical for iteration speed.
 - BioVision matching modules rely on mutable module globals; ARC uses process isolation to avoid cross-timepoint contamination.
 - `generated_cell_features.csv` is a fallback. Preferred scientific analyses should use curated quantification exports.
-- `Arc/tests/` currently has no committed automated tests.
 
 ## Troubleshooting Quick Table
 
