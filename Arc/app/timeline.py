@@ -1,76 +1,74 @@
-from __future__ import annotations
+"""Timeline playback panel with slider and play/pause."""
 
-from typing import Optional
-
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSlider, QWidget
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QLabel, QSlider
 
 
-class Timeline(QWidget):
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+class TimelinePanel(QWidget):
+    """Horizontal panel: [Play/Pause] [Label] [Slider]."""
+
+    timepoint_changed = Signal(int)
+
+    def __init__(self, parent=None):
         super().__init__(parent)
+        self.setFixedHeight(56)
+
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
-        layout.setSpacing(12)
+        layout.setContentsMargins(8, 4, 8, 4)
 
-        title = QLabel("Timeline")
-        title.setObjectName("TimelineTitle")
-        layout.addWidget(title)
+        self._play_btn = QPushButton("Play")
+        self._play_btn.setFixedWidth(60)
+        self._play_btn.clicked.connect(self._toggle_play)
+        layout.addWidget(self._play_btn)
 
-        self.play_button = QPushButton("Play")
-        self.play_button.setObjectName("TimelinePlayButton")
-        self.play_button.clicked.connect(self._toggle_play)
-        layout.addWidget(self.play_button)
+        self._label = QLabel("0 / 0")
+        self._label.setFixedWidth(80)
+        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._label)
 
-        self.timepoint_label = QLabel("t0")
-        self.timepoint_label.setObjectName("TimelineTimepointLabel")
-        layout.addWidget(self.timepoint_label)
+        self._slider = QSlider(Qt.Orientation.Horizontal)
+        self._slider.setMinimum(0)
+        self._slider.setMaximum(0)
+        self._slider.valueChanged.connect(self._on_slider_changed)
+        layout.addWidget(self._slider, stretch=1)
 
-        self.slider = QSlider(Qt.Orientation.Horizontal)
-        self.slider.setObjectName("TimelineSlider")
-        self.slider.setMinimum(0)
-        self.slider.setMaximum(0)
-        layout.addWidget(self.slider, stretch=1)
-
-        # Playback timer
-        self._playing = False
         self._timer = QTimer(self)
-        self._timer.setInterval(250)  # 100ms per frame = 10 fps
-        self._timer.timeout.connect(self._advance_frame)
+        self._timer.setInterval(120)
+        self._timer.timeout.connect(self._tick)
+
+        self._playing = False
+        self._num_frames = 0
+
+    def setup(self, num_frames: int, start: int = 0) -> None:
+        """Configure the timeline for a given number of frames."""
+        self._num_frames = num_frames
+        self._slider.setMaximum(max(0, num_frames - 1))
+        self._slider.setValue(start)
+        self._update_label()
+
+    def current_timepoint(self) -> int:
+        return self._slider.value()
+
+    def _on_slider_changed(self, value: int) -> None:
+        self._update_label()
+        self.timepoint_changed.emit(value)
+
+    def _update_label(self) -> None:
+        current = self._slider.value() + 1
+        total = self._num_frames
+        self._label.setText(f"{current} / {total}")
 
     def _toggle_play(self) -> None:
+        self._playing = not self._playing
         if self._playing:
-            self._stop()
+            self._play_btn.setText("Pause")
+            self._timer.start()
         else:
-            self._play()
+            self._play_btn.setText("Play")
+            self._timer.stop()
 
-    def _play(self) -> None:
-        if self.slider.maximum() == 0:
+    def _tick(self) -> None:
+        if self._num_frames <= 0:
             return
-        self._playing = True
-        self.play_button.setText("Pause")
-        self._timer.start()
-
-    def _stop(self) -> None:
-        self._playing = False
-        self.play_button.setText("Play")
-        self._timer.stop()
-
-    def _advance_frame(self) -> None:
-        current = self.slider.value()
-        max_val = self.slider.maximum()
-        if current >= max_val:
-            # Loop back to start
-            self.slider.setValue(0)
-        else:
-            self.slider.setValue(current + 1)
-
-    def set_range(self, count: int) -> None:
-        self._stop()
-        count = max(0, count)
-        self.slider.setMinimum(0)
-        self.slider.setMaximum(max(0, count - 1))
-        self.slider.setValue(0)
-
-    def set_timepoint_label(self, text: str) -> None:
-        self.timepoint_label.setText(text)
+        next_val = (self._slider.value() + 1) % self._num_frames
+        self._slider.setValue(next_val)

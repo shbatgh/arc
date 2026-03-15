@@ -1,34 +1,26 @@
-from __future__ import annotations
+"""Cell property sidebar panel."""
 
-from typing import Optional
-
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget, QTableWidget, QTableWidgetItem, QHeaderView
+from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
 
 
-class Sidebar(QWidget):
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
+class SidebarPanel(QTableWidget):
+    """Two-column property table showing selected cell info."""
 
-        title = QLabel("Sidebar")
-        title.setObjectName("SidebarTitle")
-        layout.addWidget(title)
+    def __init__(self, parent=None):
+        super().__init__(0, 2, parent)
+        self.setHorizontalHeaderLabels(["Property", "Value"])
+        self.horizontalHeader().setStretchLastSection(True)
+        self.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.verticalHeader().setVisible(False)
+        self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
 
-        layout.addWidget(QLabel("Selection"))
-        
-        self.props_table = QTableWidget()
-        self.props_table.setColumnCount(2)
-        self.props_table.setHorizontalHeaderLabels(["Property", "Value"])
-        self.props_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.props_table.verticalHeader().setVisible(False)
-        layout.addWidget(self.props_table)
+    def update_properties(self, rows: list[tuple[str, str]]) -> None:
+        """Set the property table rows from a list of (name, value) pairs."""
+        self.setRowCount(len(rows))
+        for i, (name, value) in enumerate(rows):
+            self.setItem(i, 0, QTableWidgetItem(name))
+            self.setItem(i, 1, QTableWidgetItem(str(value)))
 
-        layout.addStretch(1)
-
-    def update_properties(self, data: dict[str, str | float | int]) -> None:
-        self.props_table.setRowCount(len(data))
-        for row, (key, value) in enumerate(data.items()):
-            self.props_table.setItem(row, 0, QTableWidgetItem(str(key)))
-            self.props_table.setItem(row, 1, QTableWidgetItem(str(value)))
+    def clear_properties(self) -> None:
+        self.setRowCount(0)

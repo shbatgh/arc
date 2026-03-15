@@ -19,6 +19,9 @@ dependencies = [
     "umap-learn>=0.5.11",
     "vedo",
     "vtk>=9.5.2",
+    "py-spy>=0.4.1",
+    "fast-simplification>=0.1.13",
+    "pyarrow>=23.0.1",
 ]
 
 [project.scripts]
@@ -26,5 +29,7 @@ arc = "arc.main:main"
 
 [dependency-groups]
 dev = [
+    "ipykernel>=6.31.0",
     "pyinstaller>=6.18.0",
+    "pytest>=8.0",
 ]

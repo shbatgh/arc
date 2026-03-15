@@ -1,31 +1,27 @@
+"""ARC application entry point."""
+
 import sys
 from pathlib import Path
 
+# Ensure the project root is on sys.path so `Arc.*` imports resolve
+# when running as `uv run python Arc/main.py` from the repo root.
+_project_root = str(Path(__file__).resolve().parent.parent)
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 from PySide6.QtWidgets import QApplication
 
-if __package__ in {None, ""}:  # Allow running as a script.
-    repo_root = Path(__file__).resolve().parent.parent
-    if str(repo_root) not in sys.path:
-        sys.path.insert(0, str(repo_root))
-
+from Arc.app.theme import apply_theme
 from Arc.app.main_window import MainWindow
 
 
-def _apply_stylesheet(app: QApplication) -> None:
-    qss_path = Path(__file__).resolve().parent / "resources" / "styles" / "dark.qss"
-    if qss_path.exists():
-        app.setStyleSheet(qss_path.read_text(encoding="utf-8"))
-
-
-def main() -> int:
+def main():
     app = QApplication(sys.argv)
-    app.setApplicationName("ARC")
-    _apply_stylesheet(app)
-
+    apply_theme(app)
     window = MainWindow()
     window.show()
-    return app.exec()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

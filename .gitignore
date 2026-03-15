@@ -1,0 +1,46 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.pkl
+*.bak
+*.npy
+*.npz
+*.parquet
+*.tif
+*.tiff
+*.png
+*.jpg
+*.csv
+*.btr
+arc_errors.log
+.DS_Store
+
+# Data & output
+A1/
+A1_parallel*/
+Perf/BioVision/output/
+backup/
+.venv/
+.env
+
+# C++ port (not part of active dev)
+arc-c++/
+
+# Legacy code archive (old code is in git history)
+legacy_code/
+
+# Strategy/planning docs (not essential)
+LAB_SCALING_PLAYBOOK.md
+MARKET_SHARE_EXPANSION_PLAN.md
+MASSIVE_SPEED_RECOMMENDATIONS.md
+PERFORMANCE_GUIDE.md
+
+# Tests (not ready yet)
+tests/
+
+# Misc
+verify_loading.py
+Arc/GUI_README.md
