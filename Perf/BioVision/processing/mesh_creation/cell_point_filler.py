@@ -18,9 +18,7 @@ Called by pickled_quant_data.get_solid_mesh_objs().
 import copy
 
 from . import cap_finder_own_approach, catmull_rom_spline_injecter, new_triple_wireframe
-
-# Physical Z spacing per slice (microns to coordinate units)
-Z_PER_SLICE = 3 / 0.198
+from ..constants import Z_PER_SLICE
 
 # Wireframe cutting-plane spacing and tolerance
 WF_DIST = Z_PER_SLICE / 5

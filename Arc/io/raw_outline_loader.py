@@ -18,6 +18,7 @@ from Arc.core.render_types import (
 )
 from Arc.io.outline_editor import cell_color_from_id
 
+# 3 um per Z-slice / 0.198 um per XY pixel (matches Perf/BioVision/processing/constants.py)
 DEFAULT_Z_SPACING = 3.0 / 0.198
 ProgressCallback = Callable[[int, str], None]
 

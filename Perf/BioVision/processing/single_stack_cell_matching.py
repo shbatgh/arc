@@ -20,13 +20,7 @@ Called by pickled_animation_cell_matching.py.
 
 import math
 
-# ============================================================================
-#  CONFIGURATION
-# ============================================================================
-
-# Maximum distance an outline center can shift between adjacent slices,
-# as a fraction of the cell's approximate width.
-DIST_MULTIPLIER = 0.7
+from .constants import DIST_MULTIPLIER
 
 # ============================================================================
 #  INTERNAL STATE

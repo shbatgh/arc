@@ -12,8 +12,7 @@ closed vertical loop through the cell.
 Called by cell_point_filler.py.
 """
 
-# Physical Z spacing per slice (microns to coordinate units)
-Z_PER_SLICE = 3 / 0.198
+from ..constants import Z_PER_SLICE
 
 # Module-level state (set per call to triple_wireframe_creation)
 comp = 0        # 0 for X-axis, 1 for Y-axis

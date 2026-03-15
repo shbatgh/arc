@@ -24,18 +24,12 @@ import os
 import pickle
 
 from . import single_stack_cell_matching
-
-# ============================================================================
-#  CONFIGURATION
-# ============================================================================
+from .constants import Z_PER_SLICE
 
 # Maximum distance a cell can travel between timepoints, as a multiple of
 # the cell's approximate width. A value of 4 means a cell can move up to
 # 4x its own width before being treated as a new cell.
 DIST_TRAVEL_MULTIPLIER = 6
-
-# Physical Z spacing per slice (microns converted to coordinate units).
-Z_PER_SLICE = 3 / 0.198
 
 # ============================================================================
 #  INTERNAL STATE
