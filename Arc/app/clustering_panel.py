@@ -1,4 +1,4 @@
-"""Clustering panel UI stub (Phase 2+)."""
+"""Clustering panel (placeholder -- not yet connected to backend)."""
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -52,6 +52,7 @@ class ClusteringPanel(QWidget):
         layout.addWidget(features_group)
 
         # Run
+        # TODO: connect to BioVision clustering backend
         self._run_btn = QPushButton("Run Clustering")
         self._run_btn.setEnabled(False)
         layout.addWidget(self._run_btn)

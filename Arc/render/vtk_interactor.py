@@ -9,6 +9,11 @@ from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
 from vtkmodules.vtkRenderingCore import vtkRenderWindowInteractor
 
 
+VTKIS_ROTATE = 1
+VTKIS_PAN = 2
+VTKIS_DOLLY = 4
+
+
 class BlenderLikeInteractorStyle(vtkInteractorStyleTrackballCamera):
 
     def __init__(self):
@@ -63,12 +68,11 @@ class BlenderLikeInteractorStyle(vtkInteractorStyleTrackballCamera):
 
     def OnMiddleButtonUp(self):
         state = self.GetState()
-        # VTKIS_ROTATE=1, VTKIS_PAN=2, VTKIS_DOLLY=4
-        if state == 1:
+        if state == VTKIS_ROTATE:
             self.EndRotate()
-        elif state == 2:
+        elif state == VTKIS_PAN:
             self.EndPan()
-        elif state == 4:
+        elif state == VTKIS_DOLLY:
             self.EndDolly()
         if self.GetInteractor() is not None:
             self.ReleaseFocus()
@@ -85,8 +89,7 @@ class BlenderLikeInteractorStyle(vtkInteractorStyleTrackballCamera):
         self.StartDolly()
 
     def OnRightButtonUp(self):
-        # VTKIS_DOLLY=4
-        if self.GetState() == 4:
+        if self.GetState() == VTKIS_DOLLY:
             self.EndDolly()
         if self.GetInteractor() is not None:
             self.ReleaseFocus()
