@@ -17,7 +17,6 @@ Algorithm:
 Called by get_matched_cells.py.
 """
 
-import math
 import copy
 import multiprocessing
 import os
@@ -25,6 +24,7 @@ import pickle
 
 from . import single_stack_cell_matching
 from .constants import Z_PER_SLICE
+from .greedy_matcher import compute_pairwise_distances, greedy_filter
 
 # Maximum distance a cell can travel between timepoints, as a multiple of
 # the cell's approximate width. A value of 4 means a cell can move up to
@@ -124,38 +124,6 @@ def _approx_width(cell_obj, axis):
 #  MATCHING ALGORITHM
 # ============================================================================
 
-def _match_cells(cur_cells, prev_cells):
-    """Compute all pairwise distances between cells in adjacent timepoints.
-
-    Returns a list of [((center1, cell1), (center2, cell2)), distance] sorted
-    by distance (closest first).
-
-    A plain dict cannot be used here because two cells can legitimately share
-    the same center coordinates. Dict key collisions would silently erase one
-    side of the candidate pair and corrupt the matching pass.
-    """
-    matched_list = []
-    for cur_c in cur_cells:
-        cur_center = _find_3D_center(cur_c)
-        for prev_c in prev_cells:
-            prev_center = _find_3D_center(prev_c)
-            matched_list.append([
-                ((cur_center, cur_c), (prev_center, prev_c)),
-                math.dist(cur_center, prev_center),
-            ])
-    matched_list.sort(key=lambda e: e[1])
-    return matched_list
-
-
-def _remove_pairs(matched_list, center):
-    """Remove all pairs that involve a given center point."""
-    return [
-        pair
-        for pair in matched_list
-        if center not in (pair[0][0][0], pair[0][1][0])
-    ]
-
-
 def _find_max_error(cell_obj1, cell_obj2):
     """Compute the maximum allowed distance for two cells to be considered the same.
 
@@ -166,57 +134,6 @@ def _find_max_error(cell_obj1, cell_obj2):
     approx_r2 = (_approx_width(cell_obj2, "x") + _approx_width(cell_obj2, "y") +
                  _approx_width(cell_obj2, "z")) / 3
     return (approx_r1 + approx_r2) * 0.5 * DIST_TRAVEL_MULTIPLIER
-
-
-def _appears_before(matched_list, center, loc):
-    """Check if a center appears in any pair before index loc."""
-    for e in matched_list[:loc]:
-        if center in (e[0][0][0], e[0][1][0]):
-            return True
-    return False
-
-
-def _tag_centers(matched_list, center, starting_idx):
-    """Find all partner centers that haven't been matched yet."""
-    tagged = []
-    for cur_idx in range(starting_idx, len(matched_list)):
-        pair = matched_list[cur_idx]
-        c_centers = [pair[0][0][0], pair[0][1][0]]
-        if center in c_centers:
-            c_centers.remove(center)
-            center_pos_tag = c_centers[0]
-            if not _appears_before(matched_list, center_pos_tag, cur_idx):
-                tagged.append(center_pos_tag)
-    return tagged
-
-
-def _filter_pairs(matched_list):
-    """Greedily select the best non-conflicting matches within distance threshold.
-
-    Iterates through pairs (sorted by distance). For each accepted pair, removes
-    all other pairs involving either cell. Then filters by max travel distance.
-    """
-    filtered = []
-    idx = 0
-    while idx < len(matched_list):
-        filtered.append(matched_list[idx])
-
-        paired_centers = [matched_list[idx][0][0][0], matched_list[idx][0][1][0]]
-        tagged = [paired_centers[0], paired_centers[1]]
-        tagged += _tag_centers(matched_list, paired_centers[0], idx + 1)
-        tagged += _tag_centers(matched_list, paired_centers[1], idx + 1)
-
-        for center in tagged:
-            matched_list = _remove_pairs(matched_list, center)
-
-    # Apply distance threshold
-    result = []
-    for pair in filtered:
-        cell_objs = [pair[0][0][1], pair[0][1][1]]
-        max_error = _find_max_error(cell_objs[0], cell_objs[1])
-        if pair[1] < max_error:
-            result.append(pair)
-    return result
 
 
 def _identify_cell(center, color):
@@ -245,8 +162,8 @@ def _compute_tp(all_raw_cells, tp_num, color):
             )
         return
 
-    matched_list = _match_cells(cur_cells, prev_cells)
-    filtered_list = _filter_pairs(matched_list)
+    matched_list = compute_pairwise_distances(cur_cells, prev_cells, _find_3D_center)
+    filtered_list = greedy_filter(matched_list, _find_max_error)
 
     # Link matched cells to their existing Cell3D
     for pair in filtered_list:
@@ -315,8 +232,8 @@ def _transition_match_worker(tp_num):
     if not prev_cells:
         return ([], cur_cells)
 
-    matched_list = _match_cells(cur_cells, prev_cells)
-    filtered_list = _filter_pairs(matched_list)
+    matched_list = compute_pairwise_distances(cur_cells, prev_cells, _find_3D_center)
+    filtered_list = greedy_filter(matched_list, _find_max_error)
 
     matched = []
     matched_cur = set()

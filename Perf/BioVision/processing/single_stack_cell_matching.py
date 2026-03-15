@@ -18,9 +18,8 @@ Algorithm:
 Called by pickled_animation_cell_matching.py.
 """
 
-import math
-
 from .constants import DIST_MULTIPLIER
+from .greedy_matcher import compute_pairwise_distances, greedy_filter
 
 # ============================================================================
 #  INTERNAL STATE
@@ -96,88 +95,11 @@ def _find_segs(slice_dict, color):
     return slice_dict[color].copy()
 
 
-def _match_cells(cur_cells, prev_cells):
-    """Compute all pairwise distances between outlines in adjacent slices.
-
-    Returns a sorted list of [((center1, outline1), (center2, outline2)), distance].
-
-    A plain dict cannot be used here because two outlines can legitimately have
-    identical centers. In that case Python would collapse the duplicate keys and
-    silently drop one side of the pair, which later breaks the greedy matcher.
-    """
-    matched_list = []
-    for cur_c in cur_cells:
-        cur_center = _find_center(cur_c)
-        for prev_c in prev_cells:
-            prev_center = _find_center(prev_c)
-            matched_list.append([
-                ((cur_center, cur_c), (prev_center, prev_c)),
-                math.dist(cur_center, prev_center),
-            ])
-    matched_list.sort(key=lambda e: e[1])
-    return matched_list
-
-
-def _remove_pairs(matched_list, center):
-    """Remove all pairs involving a given center."""
-    return [
-        pair
-        for pair in matched_list
-        if center not in (pair[0][0][0], pair[0][1][0])
-    ]
-
-
 def _find_max_error(point_list1, point_list2):
     """Compute the maximum allowed distance for two outlines to be the same cell."""
     approx_r1 = max(_approx_width(point_list1, "x"), _approx_width(point_list1, "y"))
     approx_r2 = max(_approx_width(point_list2, "x"), _approx_width(point_list2, "y"))
     return max(approx_r1, approx_r2) * DIST_MULTIPLIER
-
-
-def _appears_before(matched_list, center, loc):
-    """Check if a center appears in any pair before index loc."""
-    for e in matched_list[:loc]:
-        if center in (e[0][0][0], e[0][1][0]):
-            return True
-    return False
-
-
-def _tag_centers(matched_list, center, starting_idx):
-    """Find all partner centers that haven't been matched yet."""
-    tagged = []
-    for cur_idx in range(starting_idx, len(matched_list)):
-        pair = matched_list[cur_idx]
-        c_centers = [pair[0][0][0], pair[0][1][0]]
-        if center in c_centers:
-            c_centers.remove(center)
-            center_pos_tag = c_centers[0]
-            if not _appears_before(matched_list, center_pos_tag, cur_idx):
-                tagged.append(center_pos_tag)
-    return tagged
-
-
-def _filter_pairs(matched_list):
-    """Greedily select the best non-conflicting matches within distance threshold."""
-    filtered = []
-    idx = 0
-    while idx < len(matched_list):
-        filtered.append(matched_list[idx])
-
-        paired_centers = [matched_list[idx][0][0][0], matched_list[idx][0][1][0]]
-        tagged = [paired_centers[0], paired_centers[1]]
-        tagged += _tag_centers(matched_list, paired_centers[0], idx + 1)
-        tagged += _tag_centers(matched_list, paired_centers[1], idx + 1)
-
-        for center in tagged:
-            matched_list = _remove_pairs(matched_list, center)
-
-    result = []
-    for pair in filtered:
-        outlines = [pair[0][0][1], pair[0][1][1]]
-        max_error = _find_max_error(outlines[0], outlines[1])
-        if pair[1] < max_error:
-            result.append(pair)
-    return result
 
 
 def _identify_cell(center, color):
@@ -206,8 +128,8 @@ def _compute_slice(stack_list, slice_num, color):
             )
         return
 
-    matched_list = _match_cells(cur_segs, prev_segs)
-    filtered_list = _filter_pairs(matched_list)
+    matched_list = compute_pairwise_distances(cur_segs, prev_segs, _find_center)
+    filtered_list = greedy_filter(matched_list, _find_max_error)
 
     for pair in filtered_list:
         cur_outline = pair[0][0][1]
