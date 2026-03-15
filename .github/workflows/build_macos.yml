@@ -29,23 +29,6 @@ jobs:
       run: |
         uv sync
 
-    - name: Build with PyInstaller
+    - name: Import smoke test
       run: |
-        uv run pyinstaller mac_build.spec --clean --noconfirm
-
-    - name: Create DMG (Optional but recommended)
-      run: |
-        # Simple DMG creation using hdiutil
-        hdiutil create -volname "Arc" -srcfolder dist/Arc.app -ov -format UDZO dist/Arc.dmg
-
-    - name: Upload App Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: Arc-macOS-App
-        path: dist/Arc.app
-
-    - name: Upload DMG Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: Arc-macOS-DMG
-        path: dist/Arc.dmg
+        uv run python -c "from Arc.app.main_window import MainWindow"

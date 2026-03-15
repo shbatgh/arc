@@ -31,12 +31,6 @@ jobs:
         uv sync
         uv sync --only-dev
 
-    - name: Build with PyInstaller
+    - name: Import smoke test
       run: |
-        uv run pyinstaller linux_build.spec --clean --noconfirm
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: Arc-Linux
-        path: dist/Arc
+        uv run python -c "from Arc.app.main_window import MainWindow"

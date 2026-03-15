@@ -24,9 +24,6 @@ dependencies = [
     "pyarrow>=23.0.1",
 ]
 
-[project.scripts]
-arc = "arc.main:main"
-
 [dependency-groups]
 dev = [
     "ipykernel>=6.31.0",
