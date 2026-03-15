@@ -31,6 +31,7 @@ arc-c++/
 
 # Legacy code archive (old code is in git history)
 legacy_code/
+old_code/
 
 # Strategy/planning docs (not essential)
 LAB_SCALING_PLAYBOOK.md
